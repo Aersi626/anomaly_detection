@@ -12,7 +12,7 @@ producer = KafkaProducer(
 )
 
 # Load and prepare data
-df = pd.read_csv("uci-secom.csv")
+df = pd.read_csv("../data/uci-secom.csv")
 df = df.fillna(method='ffill').fillna(method='bfill')
 
 # Stream each row as a Kafka message
@@ -20,6 +20,6 @@ for i, row in df.iterrows():
     message = row.to_dict()
     producer.send("sensor_data", message)
     print(f"[Kafka] Sent row {i}")
-    time.sleep(1)  # simulate streaming at ~10 rows/sec
+    time.sleep(0.1)  # simulate streaming at ~10 rows/sec
 
 producer.flush()
