@@ -1,0 +1,31 @@
+# .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Environments
+.env
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/
+
+# Logs
+*.log
+
+# Database
+anomalies.db
+
+# Kafka topic dumps or temporary files
+*.tmp
+*.bak
