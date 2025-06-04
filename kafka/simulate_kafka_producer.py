@@ -12,7 +12,7 @@ producer = KafkaProducer(
 )
 
 # Load and prepare data
-df = pd.read_csv("../data/uci-secom.csv")
+df = pd.read_csv("./data/uci-secom.csv")
 df = df.fillna(method='ffill').fillna(method='bfill')
 
 # Stream each row as a Kafka message

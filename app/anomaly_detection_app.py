@@ -12,6 +12,7 @@ from kafka import KafkaConsumer
 import json
 from collections import deque
 from db_logger import init_db, log_anomalies, read_anomalies
+from model_supervised import train_supervised_model
 
 # Streamlit UI
 st.set_page_config(page_title="🔧 Industrial Anomaly Detection", layout="wide")
@@ -30,7 +31,11 @@ with st.sidebar:
     use_pca = st.checkbox("Apply PCA", value=True)
     use_autoencoder = st.checkbox("Use AutoEncoder Reconstruction", value=True)
     pca_components = st.slider("PCA Components", min_value=5, max_value=50, value=10)
-    contamination_rate = st.slider("Isolation Forest Contamination", 0.01, 0.20, 0.05, step=0.01)
+    contamination_rate = st.slider("Isolation Forest Contamination", 0.01, 0.20, step=0.01)
+
+    mode = st.selectbox("Select Detection Mode", ["Unsupervised (Isolation Forest)", "Supervised (XGBoost)"])
+    if mode == "Supervised (XGBoost)":
+        test_size = st.slider("Test Size", 0.1, 0.5, 0.3, step=0.05)
 
 # Parameters
 buffer_size = 1000
@@ -43,7 +48,7 @@ consumer = KafkaConsumer(
     enable_auto_commit=True
 )
 
-# State buffers
+# State buffers keeps only the latest N Kafka records, no matter how often the app reruns.
 if "raw_buffer" not in st.session_state:
     st.session_state.raw_buffer = deque(maxlen=buffer_size)
 
@@ -72,7 +77,29 @@ init_db()
 # Convert to DataFrame
 df = pd.DataFrame(st.session_state.raw_buffer)
 df = df.dropna(axis=1, thresh=0.9 * len(df))
-df = df.fillna(method='ffill').fillna(method='bfill')
+df = df.ffill().bfill()
+
+if mode == "Supervised (XGBoost)":
+    with st.status("Training XGBoost model...", expanded=True) as status:
+        result = train_supervised_model(df, test_size=test_size)
+        status.update(label="✅ XGBoost training complete", state="complete")
+        st.subheader("📊 XGBoost Model Performance")
+        st.metric("Accuracy", round(result["metrics"]["accuracy"], 3))
+        st.metric("Precision", round(result["metrics"]["precision"], 3))
+        st.metric("Recall", round(result["metrics"]["recall"], 3))
+        st.metric("F1 Score", round(result["metrics"]["f1"], 3))
+
+        st.subheader("📋 Confusion Matrix")
+        st.dataframe(result["metrics"]["confusion_matrix"])
+
+        st.subheader("🔍 Predictions (last 100)")
+        df_results = pd.DataFrame({
+            "True Label": result["y_test"],
+            "Predicted Label": result["y_pred"]
+        })
+        st.dataframe(df_results.tail(100))
+
+        st.stop()
 
 # Rolling statistics
 df_numeric = df.select_dtypes(include=["number"])
@@ -92,7 +119,7 @@ if use_autoencoder:
     recon_error = np.mean((X - X_recon) ** 2, axis=1)
     X = np.hstack([X, recon_error.reshape(-1, 1)])
 
-clf = IsolationForest(contamination=0.05, random_state=42)
+clf = IsolationForest(contamination=0.15, random_state=42)
 y_pred = clf.fit_predict(X)
 
 # Anomaly visualization
@@ -103,7 +130,7 @@ results = pd.DataFrame({
 })
 
 st.metric("Anomaly Count", int((y_pred == -1).sum()))
-st.line_chart(results["Anomaly Score"].rolling(10).mean())
+st.line_chart(results["Anomaly Score"].rolling(5).mean())
 st.dataframe(results.tail(100))
 
 # After predicting anomalies
